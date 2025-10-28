@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optimized Chest Clicker</title>
+    
+    <!-- Preload key image assets to prevent flicker --><link rel="preload" href="https://i.ibb.co/0pX8qKCJ/chestclosed.png" as="image">
+    <link rel="preload" href="https://i.ibb.co/LDfdPvzL/chestopened.png" as="image">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            /* Enable fast-tap on mobile and disable double-tap zoom */
+            touch-action: manipulation;
+        }
+
+        html, body {
+            height: 100%;
+            width: 100%;
+            overflow: hidden; /* Prevent scrollbars */
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            /* UPDATED: Dynamic gradient background with brighter colors */
+            background: linear-gradient(135deg, #2a0a4e, #1a0a32, #000000, #8a0000, #00008a, #2a0a4e, #5a005a);
+            background-size: 400% 400%; /* Make background larger than viewport */
+            animation: animateBackground 30s ease infinite; /* Smooth, continuous animation */
+            position: relative;
+            cursor: pointer;
+            /* Disable tap highlight glow on mobile */
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* NEW: Keyframes for background animation */
+        @keyframes animateBackground {
+            0% { background-position: 0% 50%; }
+            25% { background-position: 100% 50%; }
+            50% { background-position: 50% 100%; }
+            75% { background-position: 0% 50%; }
+            100% { background-position: 50% 0%; }
+        }
+
+        .container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            position: relative;
+        }
+
+        .chest-container {
+            position: relative;
+            cursor: pointer;
+            transition: transform 0.1s ease;
+            user-select: none;
+            z-index: 20;
+            /* Promote to its own compositor layer for smoother transforms */
+            transform: translateZ(0);
+        }
+
+        .chest-container:active {
+            transform: scale(0.95) translateZ(0);
+        }
+
+        .chest {
+            width: 80vw;
+            height: 80vw;
+            max-width: 300px;
+            max-height: 300px;
+            background-image: url('https://i.ibb.co/0pX8qKCJ/chestclosed.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            transition: background-image 0.3s ease;
+            filter: drop-shadow(0 10px 20px rgba(0,0,0,0.3));
+            transform: translateZ(0);
+            /* Add position relative for the ::after pseudo-element */
+            position: relative;
+        }
+
+        .chest.opened {
+            background-image: url('https://i.ibb.co/LDfdPvzL/chestopened.png');
+        }
+
+        /* * OPTIMIZATION: Replaced slow 'filter' animation with a high-performance
+         * pseudo-element animation that uses 'opacity' and 'transform'.
+        */
+        .chest.opened::after {
+            content: '';
+            position: absolute;
+            top: -20%;
+            left: -20%;
+            width: 140%;
+            height: 140%;
+            background: radial-gradient(circle, rgba(255,215,0,0.6) 0%, rgba(255,215,0,0) 65%);
+            border-radius: 50%;
+            opacity: 0;
+            animation: shine-alt 0.5s ease-in-out 3;
+            pointer-events: none;
+        }
+
+        @keyframes shine-alt {
+            0%, 100% { 
+                opacity: 0; 
+                transform: scale(0.8); 
+            }
+            50% { 
+                opacity: 1; 
+                transform: scale(1.1); 
+            }
+        }
+
+        /* * PARTICLE POOL: This container holds all reusable particle elements.
+         * It's fixed, covers the screen, and doesn't intercept clicks.
+        */
+        #particle-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        /* * Reusable particle base styles.
+         * 'display: none' is the default resting state.
+         * Position is 'fixed' because clientX/Y is viewport-relative.
+        */
+        .particle {
+            display: none;
+            position: fixed;
+            pointer-events: none;
+            /* Will-change hints to the browser to optimize these properties */
+            will-change: transform, opacity;
+        }
+
+        /* --- Particle Appearance Classes (no animation) --- */
+        
+        .coin {
+            width: 18px;
+            height: 18px;
+            background: radial-gradient(circle at 30% 30%, #FFD700, #D4AF37, #B8860B);
+            border-radius: 50%;
+            z-index: 10;
+            box-shadow: 0 0 6px rgba(255, 215, 0, 0.8), inset 0 2px 3px rgba(255, 255, 255, 0.5);
+            border: 1px solid #FFEC8B;
+        }
+
+        .confetti {
+            width: 10px;
+            height: 10px;
+            z-index: 10;
+        }
+
+        .click-effect {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.3);
+            z-index: 5;
+            /* Animation is now triggered by JS */
+        }
+
+        .floating-emoji {
+            font-size: 26px;
+            z-index: 15;
+            /* Animation is now triggered by JS */
+        }
+
+        .falling-emoji {
+            font-size: 26px;
+            z-index: 20;
+            opacity: 0.8;
+            /* Animation is now triggered by JS */
+        }
+
+        /* --- Particle Animation Keyframes --- */
+
+        /* Animation for click-effect */
+        @keyframes ripple {
+            0% { transform: scale(0); opacity: 1; }
+            100% { transform: scale(2.5); opacity: 0; }
+        }
+
+        /* Animation for floating-emoji */
+        @keyframes floatUp {
+            0% { transform: translateY(0) scale(1); opacity: 1; }
+            100% { transform: translateY(-40px) scale(0.5); opacity: 0; }
+        }
+
+        /* OPTIMIZATION: New keyframes for cinematic particles, driven by CSS variables */
+        @keyframes fly-out {
+            0% {
+                transform: translate(0, 0) rotate(0) scale(1);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(var(--end-x), var(--end-y)) rotate(720deg) scale(0.5);
+                opacity: 0.2;
+            }
+        }
+
+        /* OPTIMIZATION: New keyframes for falling emojis, driven by CSS variables */
+        @keyframes fall-down {
+            0% {
+                transform: translateY(0) translateX(0) rotate(0);
+            }
+            100% {
+                /* Animate to 100vh + 50px to go completely off-screen */
+                transform: translateY(calc(100vh + 50px)) translateX(var(--sway)) rotate(360deg);
+            }
+        }
+
+        /* --- Background Effects --- */
+
+        .background-particles {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .bg-particle {
+            position: absolute;
+            /* UPDATED: Brighter and larger background particles */
+            width: var(--size); /* Use CSS variable for random size */
+            height: var(--size); /* Use CSS variable for random size */
+            background: rgba(255,255,255,0.8); /* Brighter white */
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(255,255,255,0.7); /* Added glow */
+            animation: float 15s infinite linear;
+            will-change: transform;
+        }
+
+        @keyframes float {
+            0% { transform: translateY(100vh) rotate(0deg); }
+            100% { transform: translateY(-100px) rotate(720deg); }
+        }
+
+        .celebration-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, transparent, rgba(0,0,0,0.5));
+            pointer-events: none;
+            opacity: 0;
+            z-index: 30;
+            transition: opacity 0.5s ease;
+            will-change: opacity;
+        }
+
+        .celebration-overlay.active {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="chest-container" id="chestContainer">
+            <div class="chest" id="chest"></div>
+        </div>
+    </div>
+
+    <div class="background-particles" id="backgroundParticles"></div>
+    <div class="celebration-overlay" id="celebrationOverlay"></div>
+    
+    <!-- 
+      OPTIMIZATION: Particle container. All pooled elements live here.
+    --><div id="particle-container"></div>
+
+    <script>
+        let clickCount = 0;
+        const chest = document.getElementById('chest');
+        const chestContainer = document.getElementById('chestContainer');
+        const overlay = document.getElementById('celebrationOverlay');
+        const particleContainer = document.getElementById('particle-container');
+        
+        // OPTIMIZATION: Particle pool
+        const particlePool = [];
+        const maxParticles = 100; // Fixed size for the pool
+
+        /**
+         * OPTIMIZATION: Creates the fixed-size particle pool on load.
+         * All particles are added to the DOM once and hidden.
+         */
+        function populateParticlePool() {
+            for (let i = 0; i < maxParticles; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle'; // Base class
+                particle.style.display = 'none';
+                particleContainer.appendChild(particle);
+                particlePool.push(particle);
+            }
+        }
+
+        /**
+         * OPTIMIZATION: Gets a hidden particle from the pool.
+         * Returns null if the pool is empty (all particles are in use).
+         */
+        function getParticle() {
+            if (particlePool.length === 0) {
+                // console.warn('Particle pool exhausted!');
+                return null;
+            }
+            const particle = particlePool.pop();
+            particle.style.display = 'block';
+            return particle;
+        }
+
+        /**
+         * OPTIMIZATION: Returns a particle to the pool by hiding it
+         * and resetting its properties for reuse.
+         */
+        function returnParticle(particle) {
+            // Check for both undefined and null
+            if (particle == null) {
+                console.warn("returnParticle called with null or undefined");
+                return;
+            }
+            
+            // FIX: Nullify the event handler *immediately* to prevent
+            // potential re-entrant calls or race conditions.
+            particle.onanimationend = null; 
+
+            // Reset properties
+            particle.style.display = 'none';
+            particle.style.animation = 'none';
+            particle.style.cssText = ''; // Fast way to clear all inline styles
+            particle.textContent = '';
+            particle.className = 'particle'; // Reset to base class
+            // particle.onanimationend = null; // Clean up listener - MOVED TO TOP
+            
+            particlePool.push(particle);
+        }
+
+        // Create background particles (runs once, this is fine)
+        function createBackgroundParticles() {
+            const container = document.getElementById('backgroundParticles');
+            for (let i = 0; i < 30; i++) { // UPDATED: More background particles
+                const particle = document.createElement('div');
+                particle.className = 'bg-particle';
+                particle.style.left = Math.random() * 100 + 'vw';
+                particle.style.top = Math.random() * 100 + 'vh';
+                particle.style.animationDuration = (Math.random() * 20 + 10) + 's';
+                particle.style.opacity = Math.random() * 0.7 + 0.3; // Brighter opacity
+                
+                // UPDATED: Random size for background particles
+                const size = Math.random() * 4 + 2; // 2px to 6px
+                particle.style.setProperty('--size', size + 'px');
+
+                container.appendChild(particle);
+            }
+        }
+
+        /**
+         * OPTIMIZATION: Creates a cinematic particle using CSS animations.
+         * No more requestAnimationFrame loop.
+         */
+        function createCinematicParticle(x, y, type) {
+            const particle = getParticle();
+            if (!particle) return;
+            
+            particle.className = `particle ${type}`; // e.g., 'particle coin'
+
+            if (type === 'confetti') {
+                particle.style.background = `hsl(${Math.random() * 360}, 100%, 60%)`;
+                particle.style.width = Math.random() * 8 + 4 + 'px';
+                particle.style.height = Math.random() * 8 + 4 + 'px';
+                particle.style.borderRadius = Math.random() > 0.5 ? '50%' : '0';
+            }
+            
+            particle.style.left = x + 'px';
+            particle.style.top = y + 'px';
+            
+            // Calculate animation parameters
+            const angle = Math.random() * Math.PI * 2;
+            const distance = Math.random() * 150 + 100;
+            const duration = Math.random() * 600 + 1000; // 1s to 1.6s
+            
+            const endX = Math.cos(angle) * distance;
+            const endY = Math.sin(angle) * distance;
+            
+            // Set CSS variables for the animation
+            particle.style.setProperty('--end-x', endX + 'px');
+            particle.style.setProperty('--end-y', endY + 'px');
+            
+            // Apply animation and set listener to return to pool
+            particle.style.animation = `fly-out ${duration}ms ease-out forwards`;
+            // Use event.currentTarget to be safer
+            particle.onanimationend = (e) => returnParticle(e.currentTarget);
+        }
+
+        /**
+         * OPTIMIZATION: Creates a ripple effect using CSS animation
+         * and returns the particle to the pool on completion.
+         */
+        function createRipple(x, y) {
+            const ripple = getParticle();
+            if (!ripple) return;
+            
+            ripple.className = 'particle click-effect';
+            ripple.style.left = (x - 22) + 'px';
+            ripple.style.top = (y - 22) + 'px';
+            
+            // Force reset and replay animation
+            ripple.style.animation = 'none';
+            ripple.offsetHeight; // Trigger reflow
+            ripple.style.animation = 'ripple 0.6s ease-out';
+            
+            // Use event.currentTarget to be safer
+            ripple.onanimationend = (e) => returnParticle(e.currentTarget);
+        }
+
+        /**
+         * OPTIMIZATION: Creates a floating emoji using CSS animation
+         * and returns the particle to the pool on completion.
+         */
+        function createFloatingEmoji(x, y, emoji) {
+            const emojiElement = getParticle();
+            if (!emojiElement) return;
+            
+            emojiElement.className = 'particle floating-emoji';
+            emojiElement.textContent = emoji;
+            emojiElement.style.left = x + 'px';
+            emojiElement.style.top = y + 'px';
+            emojiElement.style.fontSize = (Math.random() * 16 + 16) + 'px';
+            
+            // Force reset and replay animation
+            emojiElement.style.animation = 'none';
+            emojiElement.offsetHeight; // Trigger reflow
+            emojiElement.style.animation = 'floatUp 1s ease-out forwards';
+            
+            // Use event.currentTarget to be safer
+            emojiElement.onanimationend = (e) => returnParticle(e.currentTarget);
+        }
+
+        // Chest click handler
+        chestContainer.addEventListener('click', (e) => {
+            clickCount++;
+            
+            // Create ripple effect
+            createRipple(e.clientX, e.clientY);
+            
+            // Create cinematic particles
+            const particleCount = 6;
+            for (let i = 0; i < particleCount; i++) {
+                setTimeout(() => {
+                    createCinematicParticle(e.clientX, e.clientY, 'coin');
+                }, i * 70);
+            }
+            
+            // Create floating emoji
+            createFloatingEmoji(e.clientX, e.clientY, ['✨', '⭐', '💎', '🎁'][Math.floor(Math.random() * 4)]);
+            
+            // Vibrate effect
+            chestContainer.style.transform = 'scale(0.95) rotate(2deg) translateZ(0)';
+            setTimeout(() => {
+                chestContainer.style.transform = 'scale(1) rotate(0deg) translateZ(0)';
+            }, 100);
+            
+            // Check if chest should open
+            if (clickCount === 23) {
+                chest.classList.add('opened');
+                
+                // Activate celebration overlay
+                overlay.classList.add('active');
+                
+                // Create massive cinematic particle explosion
+                for (let i = 0; i < 60; i++) { // Reduced from 100 to avoid exhausting pool
+                    setTimeout(() => {
+                        createCinematicParticle(e.clientX, e.clientY, 'coin');
+                        createCinematicParticle(e.clientX, e.clientY, 'confetti');
+                    }, i * 15); // Sped up interval
+                }
+                
+                // Create celebration emojis
+                for (let i = 0; i < 15; i++) {
+                    setTimeout(() => {
+                        createFloatingEmoji(
+                            Math.random() * window.innerWidth,
+                            Math.random() * window.innerHeight,
+                            ['🎉', '🎊', '✨', '⭐', '💎', '🎁', '🏆', '⭐'][Math.floor(Math.random() * 8)]
+                        );
+                    }, i * 150);
+                }
+                
+                // Add extra effects
+                document.body.style.animation = 'celebrate 1s ease-in-out';
+                setTimeout(() => {
+                    document.body.style.animation = '';
+                }, 1000);
+            }
+        });
+
+        // Add celebrate animation to CSS
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes celebrate {
+                0%, 100% { filter: brightness(1) hue-rotate(0deg); }
+                25% { filter: brightness(1.5) hue-rotate(90deg); }
+                50% { filter: brightness(1.2) hue-rotate(180deg); }
+                75% { filter: brightness(1.4) hue-rotate(270deg); }
+            }
+        `;
+        document.head.appendChild(style);
+
+        // Initialize background particles
+        createBackgroundParticles();
+        
+        // OPTIMIZATION: Initialize the particle pool
+        populateParticlePool();
+
+        // Add some random floating emojis occasionally (only after chest opens)
+        setInterval(() => {
+            if (clickCount >= 23) {
+                const emoji = getParticle();
+                if (!emoji) return; // Pool empty, skip this interval
+                
+                emoji.className = 'particle falling-emoji';
+                emoji.textContent = ['✨', '⭐', '💎', '🏆', '🎁', '🎊', '🎉'][Math.floor(Math.random() * 7)];
+                emoji.style.left = Math.random() * 100 + 'vw';
+                emoji.style.top = '-50px'; // Start position
+                emoji.style.fontSize = (Math.random() * 20 + 16) + 'px';
+                
+                const duration = Math.random() * 1500 + 2000; // 2s to 3.5s
+                const sway = Math.random() * 40 - 20; // -20px to +20px
+                
+                // Set CSS variables for animation
+                emoji.style.setProperty('--sway', sway + 'px');
+                
+                // Apply animation and set listener
+                emoji.style.animation = `fall-down ${duration}ms linear forwards`;
+                // Use event.currentTarget to be safer
+                emoji.onanimationend = (e) => returnParticle(e.currentTarget);
+            }
+        }, 800); // Reduced interval slightly from 1200
+    </script>
+</body>
+</html>
+
+
