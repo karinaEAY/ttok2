@@ -114,6 +114,41 @@
             }
         }
 
+        /* NEW: Styles for the "SUCCESS!" message */
+        .success-message {
+            display: none;
+            position: absolute;
+            top: -60px; /* Position above the chest */
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #FFD700;
+            text-shadow: 0 0 10px #FFD700, 0 0 20px #fff, 0 0 30px #fff;
+            z-index: 50;
+            pointer-events: none;
+            text-transform: uppercase;
+        }
+
+        .success-message.show {
+            display: block;
+            animation: pulseGlow 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulseGlow {
+            0%, 100% {
+                transform: translateX(-50%) scale(1);
+                opacity: 1;
+                text-shadow: 0 0 10px #FFD700, 0 0 20px #FFF;
+            }
+            50% {
+                transform: translateX(-50%) scale(1.1);
+                opacity: 0.9;
+                text-shadow: 0 0 20px #FFD700, 0 0 40px #FFF;
+            }
+        }
+
+
         /* * PARTICLE POOL: This container holds all reusable particle elements.
          * It's fixed, covers the screen, and doesn't intercept clicks.
         */
@@ -268,6 +303,8 @@
     <div class="container">
         <div class="chest-container" id="chestContainer">
             <div class="chest" id="chest"></div>
+            <!-- NEW: "SUCCESS!" message element -->
+            <div class="success-message" id="successMessage">SUCCESS!</div>
         </div>
     </div>
 
@@ -284,6 +321,7 @@
         const chestContainer = document.getElementById('chestContainer');
         const overlay = document.getElementById('celebrationOverlay');
         const particleContainer = document.getElementById('particle-container');
+        const successMessage = document.getElementById('successMessage'); // NEW: Get the message element
         
         // OPTIMIZATION: Particle pool
         const particlePool = [];
@@ -471,6 +509,7 @@
             // Check if chest should open
             if (clickCount === 23) {
                 chest.classList.add('opened');
+                successMessage.classList.add('show'); // NEW: Show the "SUCCESS!" message
                 
                 // Activate celebration overlay
                 overlay.classList.add('active');
